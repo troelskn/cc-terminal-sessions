@@ -121,11 +121,16 @@ fn list_session_dir(path: String) -> Result<Vec<DirEntryInfo>, String> {
     Ok(entries)
 }
 
-/// Reads a file from `offset` to EOF. Returns the new size so the caller can
-/// resume from there next time; a size smaller than the caller's stored
-/// offset means the file was truncated and should be re-read from zero.
+/// Reads a file from `offset` to EOF, or at most `limit` bytes when given.
+/// Returns the position after the read so the caller can resume from there;
+/// a size smaller than the caller's stored offset means the file was
+/// truncated and should be re-read from zero.
 #[tauri::command]
-async fn read_file_slice(path: String, offset: u64) -> Result<FileSlice, String> {
+async fn read_file_slice(
+    path: String,
+    offset: u64,
+    limit: Option<u64>,
+) -> Result<FileSlice, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let file_path = PathBuf::from(&path);
         ensure_allowed(&file_path)?;
@@ -134,7 +139,16 @@ async fn read_file_slice(path: String, offset: u64) -> Result<FileSlice, String>
         let start = offset.min(len);
         file.seek(SeekFrom::Start(start)).map_err(|e| e.to_string())?;
         let mut buf = Vec::new();
-        file.read_to_end(&mut buf).map_err(|e| e.to_string())?;
+        match limit {
+            Some(limit) => {
+                file.take(limit)
+                    .read_to_end(&mut buf)
+                    .map_err(|e| e.to_string())?;
+            }
+            None => {
+                file.read_to_end(&mut buf).map_err(|e| e.to_string())?;
+            }
+        }
         Ok(FileSlice {
             content: String::from_utf8_lossy(&buf).into_owned(),
             size: start + buf.len() as u64,

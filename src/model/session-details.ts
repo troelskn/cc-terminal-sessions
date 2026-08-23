@@ -1,22 +1,11 @@
-import { invoke } from "@tauri-apps/api/core";
+import {
+  type DirEntry,
+  listSessionDir,
+  probePaths,
+  readFileSlice,
+  slugify,
+} from "./backend";
 import { type ClaudeAgent, claudeAgents } from "./claude-agents";
-
-interface ProbePaths {
-  claudeHome: string;
-  tmpBase: string;
-}
-
-interface DirEntry {
-  name: string;
-  size: number;
-  modifiedMs: number;
-  isDir: boolean;
-}
-
-interface FileSlice {
-  content: string;
-  size: number;
-}
 
 export interface ShellCounts {
   running: number;
@@ -45,11 +34,6 @@ const SUBAGENT_ACTIVE_WINDOW_MS = 30_000;
 /** Longest prefix of the exit marker that could straddle a read boundary. */
 const CARRY_LENGTH = 40;
 
-/** Claude Code's project-directory encoding of a cwd. */
-function slugify(cwd: string): string {
-  return cwd.replace(/[^a-zA-Z0-9]/g, "-");
-}
-
 interface TaskFileCache {
   size: number;
   modifiedMs: number;
@@ -68,7 +52,6 @@ class SessionDetailsModel {
   #timer: number | null = null;
   #inFlight = false;
   #lastKey = "";
-  #paths: ProbePaths | null = null;
 
   /** Byte offset already consumed, per append-only output file. */
   #offsets = new Map<string, number>();
@@ -110,7 +93,6 @@ class SessionDetailsModel {
     }
     this.#inFlight = true;
     try {
-      this.#paths ??= await invoke<ProbePaths>("probe_paths");
       const agents = claudeAgents.state.agents;
       const details = new Map<string, SessionDetails>();
       await Promise.all(
@@ -127,7 +109,7 @@ class SessionDetailsModel {
   }
 
   async #probeSession(agent: ClaudeAgent): Promise<SessionDetails> {
-    const paths = this.#paths as ProbePaths;
+    const paths = await probePaths();
     const slug = slugify(agent.cwd);
     const [subagents, tasks] = await Promise.all([
       this.#listSubagents(
@@ -155,7 +137,7 @@ class SessionDetailsModel {
   async #listSubagents(
     dir: string,
   ): Promise<{ ids: Set<string>; active: number }> {
-    const entries = await invoke<DirEntry[]>("list_session_dir", { path: dir });
+    const entries = await listSessionDir(dir);
     const ids = new Set<string>();
     let active = 0;
     const now = Date.now();
@@ -181,7 +163,7 @@ class SessionDetailsModel {
     dir: string,
     subagentIds: Set<string>,
   ): Promise<ShellCounts> {
-    const entries = await invoke<DirEntry[]>("list_session_dir", { path: dir });
+    const entries = await listSessionDir(dir);
     let running = 0;
     let completed = 0;
     for (const entry of entries) {
@@ -219,7 +201,7 @@ class SessionDetailsModel {
     if (sizeOnDisk === offset) {
       return false;
     }
-    const slice = await invoke<FileSlice>("read_file_slice", { path, offset });
+    const slice = await readFileSlice(path, offset);
     this.#offsets.set(path, slice.size);
     const haystack = (this.#carry.get(path) ?? "") + slice.content;
     this.#carry.set(path, haystack.slice(-CARRY_LENGTH));
@@ -227,7 +209,7 @@ class SessionDetailsModel {
   }
 
   async #probeTasks(dir: string): Promise<TaskCounts> {
-    const entries = await invoke<DirEntry[]>("list_session_dir", { path: dir });
+    const entries = await listSessionDir(dir);
     let total = 0;
     let completed = 0;
     for (const entry of entries) {
@@ -245,10 +227,7 @@ class SessionDetailsModel {
         status = cached.status;
       } else {
         try {
-          const slice = await invoke<FileSlice>("read_file_slice", {
-            path,
-            offset: 0,
-          });
+          const slice = await readFileSlice(path, 0);
           const parsed: unknown = JSON.parse(slice.content);
           status =
             typeof parsed === "object" &&
