@@ -138,6 +138,16 @@ function render(root: HTMLElement): void {
 
   root.append(list, hint);
 
+  // The whole surface drags the window; nothing in it is click-interactive.
+  window.addEventListener("mousedown", (event) => {
+    if (event.button !== 0) {
+      return;
+    }
+    getCurrentWindow()
+      .startDragging()
+      .catch((error: unknown) => console.error("drag failed:", error));
+  });
+
   window.addEventListener("keydown", (event) => {
     if (event.metaKey || event.ctrlKey || event.altKey) {
       return;
