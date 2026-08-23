@@ -13,7 +13,7 @@
     "windows": [
       {
         "title": "Dask",
-        "width": 280,
+        "width": 350,
         "height": 200,
         "resizable": true,
         "fullscreen": false,

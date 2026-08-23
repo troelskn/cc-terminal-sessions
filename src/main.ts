@@ -122,9 +122,6 @@ function renderAgents(
 }
 
 function render(root: HTMLElement): void {
-  const heading = document.createElement("h1");
-  heading.textContent = "Dask";
-
   const list = document.createElement("ul");
   list.className = "agents";
 
@@ -132,7 +129,7 @@ function render(root: HTMLElement): void {
   hint.className = "hint";
   hint.textContent = "⌘⇧D toggles this window";
 
-  root.append(heading, list, hint);
+  root.append(list, hint);
 
   const rerender = (): void => {
     renderAgents(list, claudeAgents.state, sessionDetails.details);
