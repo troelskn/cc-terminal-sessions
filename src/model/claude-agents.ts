@@ -3,8 +3,8 @@ import { probePaths, readFileSlice, slugify } from "./backend";
 
 /** How much of a transcript head to scan for continuation links. */
 const LINK_SCAN_BYTES = 131072;
-const SESSION_ID_RE =
-  /"sessionId":"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"/g;
+const UUID_RE =
+  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g;
 
 /** Statuses observed from `claude agents --json`; the CLI may add more. */
 export type AgentStatus = "idle" | "busy" | (string & {});
@@ -101,18 +101,21 @@ class ClaudeAgentsModel {
   /**
    * Opening the agents view hands a conversation off to a background
    * session with a new id; the CLI then lists both it and the original
-   * interactive session. The continuation's transcript head still carries
-   * entries stamped with the original session id (migrated history), so
-   * hide any listed session that a background session references.
+   * interactive session. The continuation's transcript head still contains
+   * the original session id (in migrated-history entries such as snapshot
+   * paths), so hide any *listed* session whose id appears there.
    */
   async #dedupe(agents: ClaudeAgent[]): Promise<ClaudeAgent[]> {
+    const listed = new Set(agents.map((agent) => agent.sessionId));
     const hidden = new Set<string>();
     await Promise.all(
       agents
         .filter((agent) => agent.kind === "background")
         .map(async (agent) => {
           for (const id of await this.#linkedSessions(agent)) {
-            hidden.add(id);
+            if (listed.has(id)) {
+              hidden.add(id);
+            }
           }
         }),
     );
@@ -129,9 +132,9 @@ class ClaudeAgentsModel {
       const paths = await probePaths();
       const path = `${paths.claudeHome}/projects/${slugify(agent.cwd)}/${agent.sessionId}.jsonl`;
       const slice = await readFileSlice(path, 0, LINK_SCAN_BYTES);
-      for (const match of slice.content.matchAll(SESSION_ID_RE)) {
-        if (match[1] !== undefined && match[1] !== agent.sessionId) {
-          found.add(match[1]);
+      for (const match of slice.content.matchAll(UUID_RE)) {
+        if (match[0] !== agent.sessionId) {
+          found.add(match[0]);
         }
       }
       // Cache only once conclusive: links were found, or the scan window
