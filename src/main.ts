@@ -1,6 +1,10 @@
 import { hide as hideApp } from "@tauri-apps/api/app";
 import { LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
-import { type AgentsState, claudeAgents } from "./model/claude-agents";
+import {
+  type AgentsState,
+  type ClaudeAgent,
+  claudeAgents,
+} from "./model/claude-agents";
 import { type SessionDetails, sessionDetails } from "./model/session-details";
 
 const MAX_WINDOW_HEIGHT = 600;
@@ -42,6 +46,35 @@ function fitWindowToContent(root: HTMLElement): void {
       console.error("resize failed:", error),
     );
   });
+}
+
+function formatAge(ms: number): string {
+  const minutes = Math.floor(ms / 60_000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 0) {
+    return `${days}d ${hours % 24}h`;
+  }
+  if (hours > 0) {
+    return `${hours}h ${minutes % 60}m`;
+  }
+  return `${minutes}m`;
+}
+
+function formatTokens(count: number): string {
+  return count >= 1000 ? `${Math.round(count / 1000)}k` : String(count);
+}
+
+function metaLine(
+  agent: ClaudeAgent,
+  details: SessionDetails | undefined,
+): string {
+  const parts = [formatAge(Date.now() - agent.startedAt)];
+  const tokens = details?.contextTokens;
+  if (tokens !== undefined && tokens !== null) {
+    parts.push(`${formatTokens(tokens)} ctx`);
+  }
+  return parts.join(" · ");
 }
 
 function detailLine(details: SessionDetails | undefined): string {
@@ -122,6 +155,11 @@ function renderAgents(
     name.append(label, auth);
     info.append(name);
 
+    const meta = document.createElement("div");
+    meta.className = "detail";
+    meta.textContent = metaLine(agent, details.get(agent.sessionId));
+    info.append(meta);
+
     const line = detailLine(details.get(agent.sessionId));
     if (line !== "") {
       const detail = document.createElement("div");
@@ -194,6 +232,8 @@ function render(root: HTMLElement): void {
   sessionDetails.subscribe(rerender);
   claudeAgents.start(3000);
   sessionDetails.start(3000);
+  // Keep the age line fresh even when nothing else changes.
+  window.setInterval(rerender, 30_000);
 }
 
 const app = document.getElementById("app");

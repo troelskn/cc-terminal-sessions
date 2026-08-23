@@ -24,6 +24,8 @@ export interface SessionDetails {
    * liveness field on disk, so recency is the best available signal. */
   subagentCount: number;
   tasks: TaskCounts;
+  /** Tokens in context per the transcript's last assistant usage block. */
+  contextTokens: number | null;
 }
 
 export type DetailsListener = (details: Map<string, SessionDetails>) => void;
@@ -61,6 +63,8 @@ class SessionDetailsModel {
   #exited = new Set<string>();
   /** Task JSON files, cached by size + mtime. */
   #taskCache = new Map<string, TaskFileCache>();
+  /** Context tokens per transcript path, cached by file size. */
+  #contextCache = new Map<string, { size: number; tokens: number | null }>();
 
   get details(): Map<string, SessionDetails> {
     return this.#details;
@@ -111,11 +115,15 @@ class SessionDetailsModel {
   async #probeSession(agent: ClaudeAgent): Promise<SessionDetails> {
     const paths = await probePaths();
     const slug = slugify(agent.cwd);
-    const [subagents, tasks] = await Promise.all([
+    const [subagents, tasks, contextTokens] = await Promise.all([
       this.#listSubagents(
         `${paths.claudeHome}/projects/${slug}/${agent.sessionId}/subagents`,
       ),
       this.#probeTasks(`${paths.claudeHome}/tasks/${agent.sessionId}`),
+      this.#probeContext(
+        `${paths.claudeHome}/projects/${slug}`,
+        agent.sessionId,
+      ),
     ]);
     const shells = await this.#probeShells(
       `${paths.tmpBase}/${slug}/${agent.sessionId}/tasks`,
@@ -127,7 +135,61 @@ class SessionDetailsModel {
       shells,
       subagentCount: subagents.active,
       tasks,
+      contextTokens,
     };
+  }
+
+  /**
+   * Context size = the usage block of the newest assistant entry in the
+   * session transcript (input + cache tokens). Reads only the transcript
+   * tail, and only when the file has grown.
+   */
+  async #probeContext(
+    projectDir: string,
+    sessionId: string,
+  ): Promise<number | null> {
+    const entries = await listSessionDir(projectDir);
+    const entry = entries.find((e) => e.name === `${sessionId}.jsonl`);
+    if (entry === undefined) {
+      return null;
+    }
+    const path = `${projectDir}/${entry.name}`;
+    const cached = this.#contextCache.get(path);
+    if (cached !== undefined && cached.size === entry.size) {
+      return cached.tokens;
+    }
+    const offset = Math.max(0, entry.size - 65536);
+    const slice = await readFileSlice(path, offset);
+    const lines = slice.content.split("\n");
+    let tokens: number | null = null;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      if (line === undefined || !line.includes('"usage"')) {
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(line) as Record<string, unknown>;
+        if (parsed.type !== "assistant") {
+          continue;
+        }
+        const message = parsed.message as Record<string, unknown> | undefined;
+        const usage = message?.usage as Record<string, unknown> | undefined;
+        if (usage === undefined) {
+          continue;
+        }
+        const count = (key: string): number =>
+          typeof usage[key] === "number" ? usage[key] : 0;
+        tokens =
+          count("input_tokens") +
+          count("cache_read_input_tokens") +
+          count("cache_creation_input_tokens");
+        break;
+      } catch {
+        // Partial or foreign line; keep scanning backwards.
+      }
+    }
+    this.#contextCache.set(path, { size: entry.size, tokens });
+    return tokens;
   }
 
   /**
