@@ -9,6 +9,8 @@ const UUID_RE =
 /** Statuses observed from `claude agents --json`; the CLI may add more. */
 export type AgentStatus = "idle" | "busy" | (string & {});
 
+export type AuthMode = "api" | "subscription" | "unknown";
+
 export interface ClaudeAgent {
   pid: number;
   cwd: string;
@@ -22,6 +24,8 @@ export interface ClaudeAgent {
    * for interactive sessions, the hidden twin's pid for a deduped
    * background continuation, null when daemon-only. */
   terminalPid: number | null;
+  /** How the session bills: API key in its env, or the claude.ai login. */
+  auth: AuthMode;
 }
 
 export interface AgentsState {
@@ -58,6 +62,7 @@ function parseAgent(value: unknown): ClaudeAgent {
     name,
     status,
     terminalPid: kind === "interactive" ? pid : null,
+    auth: "unknown",
   };
 }
 
@@ -74,6 +79,8 @@ class ClaudeAgentsModel {
   #lastKey = "";
   /** Session ids referenced by a continuation's transcript head. */
   #links = new Map<string, Set<string>>();
+  /** Auth mode per pid; a process env cannot change after launch. */
+  #auth = new Map<number, AuthMode>();
 
   get state(): AgentsState {
     return this.#state;
@@ -108,7 +115,26 @@ class ClaudeAgentsModel {
     if (!Array.isArray(data)) {
       throw new Error("expected a JSON array from claude agents --json");
     }
-    return this.#dedupe(data.map(parseAgent));
+    const agents = await this.#dedupe(data.map(parseAgent));
+    await this.#resolveAuth(agents);
+    return agents;
+  }
+
+  async #resolveAuth(agents: ClaudeAgent[]): Promise<void> {
+    await Promise.all(
+      agents.map(async (agent) => {
+        let auth = this.#auth.get(agent.pid);
+        if (auth === undefined) {
+          try {
+            auth = await invoke<AuthMode>("probe_auth", { pid: agent.pid });
+            this.#auth.set(agent.pid, auth);
+          } catch {
+            auth = "unknown";
+          }
+        }
+        agent.auth = auth;
+      }),
+    );
   }
 
   /**

@@ -71,9 +71,25 @@ main {
 }
 
 .name {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35em;
+  overflow: hidden;
+}
+
+.name .label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.auth {
+  flex-shrink: 0;
+  color: #d97757;
+}
+
+.auth-api {
+  color: #6a6a72;
 }
 
 .status {

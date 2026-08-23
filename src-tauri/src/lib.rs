@@ -29,6 +29,31 @@ async fn list_claude_agents() -> Result<String, String> {
     .map_err(|e| format!("task failed: {e}"))?
 }
 
+/// Best-effort auth-mode detection for a session process: an
+/// ANTHROPIC_API_KEY in its environment means API-key billing; otherwise a
+/// claude.ai login in ~/.claude.json means subscription.
+#[tauri::command]
+async fn probe_auth(pid: u32) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let output = std::process::Command::new("ps")
+            .args(["eww", "-o", "command=", "-p", &pid.to_string()])
+            .output()
+            .map_err(|e| e.to_string())?;
+        if String::from_utf8_lossy(&output.stdout).contains("ANTHROPIC_API_KEY=") {
+            return Ok("api".to_string());
+        }
+        let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
+        let config = std::fs::read_to_string(format!("{home}/.claude.json")).unwrap_or_default();
+        if config.contains("\"oauthAccount\"") {
+            Ok("subscription".to_string())
+        } else {
+            Ok("unknown".to_string())
+        }
+    })
+    .await
+    .map_err(|e| format!("task failed: {e}"))?
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ProbePaths {
@@ -235,7 +260,8 @@ pub fn run() {
             probe_paths,
             list_session_dir,
             read_file_slice,
-            focus_terminal_tab
+            focus_terminal_tab,
+            probe_auth
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

@@ -107,8 +107,18 @@ function renderAgents(
 
     const name = document.createElement("div");
     name.className = "name";
-    name.textContent = agent.name;
     name.title = agent.cwd;
+
+    const label = document.createElement("span");
+    label.className = "label";
+    label.textContent = agent.name;
+
+    const auth = document.createElement("span");
+    auth.className = agent.auth === "api" ? "auth auth-api" : "auth";
+    auth.textContent = "•";
+    auth.title = agent.auth === "api" ? "API key" : "subscription";
+
+    name.append(label, auth);
     info.append(name);
 
     const line = detailLine(details.get(agent.sessionId));
