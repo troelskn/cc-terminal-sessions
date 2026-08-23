@@ -103,5 +103,7 @@ main {
 .hint {
   margin-top: 1.25rem;
   font-size: 0.7rem;
+  line-height: 1.5;
   color: #6a6a72;
+  white-space: pre-line;
 }
