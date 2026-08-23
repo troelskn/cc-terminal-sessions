@@ -5,12 +5,14 @@
 
 body {
   margin: 0;
-  background: #1a1a1e;
+  background: transparent;
   color: #e8e8ea;
 }
 
 main {
   padding: 1rem 1.25rem;
+  background: #1a1a1e;
+  border-radius: 10px;
 }
 
 .agents {

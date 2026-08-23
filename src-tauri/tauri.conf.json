@@ -10,6 +10,7 @@
     "beforeBuildCommand": "npm run build"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "Dask",
@@ -17,7 +18,9 @@
         "height": 200,
         "resizable": true,
         "fullscreen": false,
-        "theme": "Dark"
+        "theme": "Dark",
+        "decorations": false,
+        "transparent": true
       }
     ],
     "security": {
