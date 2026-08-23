@@ -65,6 +65,10 @@ function formatTokens(count: number): string {
   return count >= 1000 ? `${Math.round(count / 1000)}k` : String(count);
 }
 
+function formatCost(usd: number): string {
+  return usd >= 100 ? `$${Math.round(usd)}` : `$${usd.toFixed(2)}`;
+}
+
 function metaLine(
   agent: ClaudeAgent,
   details: SessionDetails | undefined,
@@ -73,6 +77,10 @@ function metaLine(
   const tokens = details?.contextTokens;
   if (tokens !== undefined && tokens !== null) {
     parts.push(`${formatTokens(tokens)} ctx`);
+  }
+  const cost = details?.costUsd;
+  if (cost !== undefined && cost !== null && cost > 0) {
+    parts.push(formatCost(cost));
   }
   return parts.join(" · ");
 }

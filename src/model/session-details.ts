@@ -26,6 +26,8 @@ export interface SessionDetails {
   tasks: TaskCounts;
   /** Tokens in context per the transcript's last assistant usage block. */
   contextTokens: number | null;
+  /** Estimated API-rate cost accumulated from transcript usage blocks. */
+  costUsd: number | null;
 }
 
 export type DetailsListener = (details: Map<string, SessionDetails>) => void;
@@ -40,6 +42,59 @@ interface TaskFileCache {
   size: number;
   modifiedMs: number;
   status: string;
+}
+
+interface CostAccum {
+  /** Byte offset of the first unconsumed line. */
+  offset: number;
+  cost: number;
+  /** Dedupes repeated usage lines belonging to one API response. */
+  lastMessageId: string | null;
+}
+
+const MTOK = 1_000_000;
+/** USD per MTok [input, output], matched by model-id prefix.
+ * Anthropic API rates as of 2026-08; cache read 0.1x input, cache write
+ * 1.25x (5m TTL) / 2x (1h TTL). */
+const MODEL_PRICES: [string, number, number][] = [
+  ["claude-fable-5", 10, 50],
+  ["claude-mythos-5", 10, 50],
+  ["claude-opus", 5, 25],
+  ["claude-sonnet", 3, 15],
+  ["claude-haiku", 1, 5],
+];
+/** Opus-tier assumption for models the table doesn't know. */
+const FALLBACK_PRICE: [number, number] = [5, 25];
+
+function priceFor(model: string): [number, number] {
+  for (const [prefix, input, output] of MODEL_PRICES) {
+    if (model.startsWith(prefix)) {
+      return [input, output];
+    }
+  }
+  return FALLBACK_PRICE;
+}
+
+function usageCost(model: string, usage: Record<string, unknown>): number {
+  const [inRate, outRate] = priceFor(model);
+  const count = (key: string): number =>
+    typeof usage[key] === "number" ? usage[key] : 0;
+  const creation = usage.cache_creation as Record<string, unknown> | undefined;
+  const write5m = creation?.ephemeral_5m_input_tokens;
+  const write1h = creation?.ephemeral_1h_input_tokens;
+  const writes =
+    typeof write5m === "number" || typeof write1h === "number"
+      ? (typeof write5m === "number" ? write5m : 0) * 1.25 +
+        (typeof write1h === "number" ? write1h : 0) * 2
+      : count("cache_creation_input_tokens") * 1.25;
+  return (
+    ((count("input_tokens") +
+      count("cache_read_input_tokens") * 0.1 +
+      writes) *
+      inRate +
+      count("output_tokens") * outRate) /
+    MTOK
+  );
 }
 
 /**
@@ -65,6 +120,8 @@ class SessionDetailsModel {
   #taskCache = new Map<string, TaskFileCache>();
   /** Context tokens per transcript path, cached by file size. */
   #contextCache = new Map<string, { size: number; tokens: number | null }>();
+  /** Incremental cost accumulator per transcript path. */
+  #costCache = new Map<string, CostAccum>();
 
   get details(): Map<string, SessionDetails> {
     return this.#details;
@@ -130,13 +187,82 @@ class SessionDetailsModel {
       subagents.ids,
       agent,
     );
+    const transcriptPaths = [
+      `${paths.claudeHome}/projects/${slug}/${agent.sessionId}.jsonl`,
+      ...[...subagents.ids].map(
+        (id) =>
+          `${paths.claudeHome}/projects/${slug}/${agent.sessionId}/subagents/agent-${id}.jsonl`,
+      ),
+    ];
+    const costs = await Promise.all(
+      transcriptPaths.map((path) => this.#accumulateCost(path)),
+    );
+    const costUsd = costs.reduce((sum, cost) => sum + cost, 0);
     return {
       sessionId: agent.sessionId,
       shells,
       subagentCount: subagents.active,
       tasks,
       contextTokens,
+      costUsd,
     };
+  }
+
+  /**
+   * Running cost total for one transcript, advanced incrementally: each
+   * probe reads only bytes past the stored offset and consumes whole
+   * lines, so a session's history is priced exactly once.
+   */
+  async #accumulateCost(path: string): Promise<number> {
+    const accum = this.#costCache.get(path) ?? {
+      offset: 0,
+      cost: 0,
+      lastMessageId: null,
+    };
+    try {
+      const slice = await readFileSlice(path, accum.offset);
+      if (slice.size < accum.offset) {
+        // Truncated; recount from scratch on the next probe.
+        this.#costCache.delete(path);
+        return 0;
+      }
+      const lastNewline = slice.content.lastIndexOf("\n");
+      if (slice.content.length === 0 || lastNewline === -1) {
+        return accum.cost;
+      }
+      for (const line of slice.content.slice(0, lastNewline).split("\n")) {
+        if (!line.includes('"usage"')) {
+          continue;
+        }
+        try {
+          const parsed = JSON.parse(line) as Record<string, unknown>;
+          if (parsed.type !== "assistant") {
+            continue;
+          }
+          const message = parsed.message as Record<string, unknown> | undefined;
+          const usage = message?.usage as Record<string, unknown> | undefined;
+          if (usage === undefined) {
+            continue;
+          }
+          const id = typeof message?.id === "string" ? message.id : null;
+          if (id !== null && id === accum.lastMessageId) {
+            continue;
+          }
+          const model =
+            typeof message?.model === "string" ? message.model : "";
+          accum.cost += usageCost(model, usage);
+          accum.lastMessageId = id;
+        } catch {
+          // Foreign or partial line; skip.
+        }
+      }
+      const remainder = slice.content.slice(lastNewline + 1);
+      accum.offset = slice.size - new TextEncoder().encode(remainder).length;
+      this.#costCache.set(path, accum);
+    } catch {
+      // Transcript unreadable right now; report what we have.
+    }
+    return accum.cost;
   }
 
   /**
