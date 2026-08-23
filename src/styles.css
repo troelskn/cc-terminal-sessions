@@ -39,9 +39,12 @@ h1 {
 
 .index {
   flex-shrink: 0;
-  min-width: 1.1rem;
-  text-align: center;
-  padding: 0.1rem 0.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  box-sizing: border-box;
   border: 1px solid #3a3a42;
   border-radius: 4px;
   font-size: 0.7rem;
