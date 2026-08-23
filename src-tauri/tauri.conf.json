@@ -14,7 +14,7 @@
     "windows": [
       {
         "title": "cc-terminal-sessions",
-        "width": 350,
+        "width": 400,
         "height": 200,
         "resizable": true,
         "fullscreen": false,
