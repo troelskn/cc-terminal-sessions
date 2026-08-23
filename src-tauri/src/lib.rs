@@ -8,12 +8,18 @@ use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
 /// Runs `claude agents --json` and returns its raw stdout. Goes through the
 /// user's login shell because a bundled .app doesn't inherit the terminal
 /// PATH (claude typically lives in ~/.local/bin).
+///
+/// The shell is run interactive *and* login (`-ilc`): a bare login shell
+/// (`-lc`) sources ~/.zprofile/~/.zlogin but not ~/.zshrc, which is where
+/// many setups (including PATH additions for ~/.local/bin) actually live.
+/// Without `-i`, a Finder-launched .app resolves `claude` as not-found even
+/// though it works from the terminal.
 #[tauri::command]
 async fn list_claude_agents() -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
         let output = std::process::Command::new(shell)
-            .args(["-lc", "claude agents --json"])
+            .args(["-ilc", "claude agents --json"])
             .output()
             .map_err(|e| format!("failed to run claude: {e}"))?;
         if !output.status.success() {
