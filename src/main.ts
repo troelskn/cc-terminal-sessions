@@ -5,10 +5,17 @@ function detailLine(details: SessionDetails | undefined): string {
   if (details === undefined) {
     return "…";
   }
-  const parts = [
-    `${details.shells.running} shell${details.shells.running === 1 ? "" : "s"}`,
-    `${details.subagentCount} agent${details.subagentCount === 1 ? "" : "s"}`,
-  ];
+  const parts: string[] = [];
+  if (details.shells.running > 0) {
+    parts.push(
+      `${details.shells.running} shell${details.shells.running === 1 ? "" : "s"}`,
+    );
+  }
+  if (details.subagentCount > 0) {
+    parts.push(
+      `${details.subagentCount} agent${details.subagentCount === 1 ? "" : "s"}`,
+    );
+  }
   if (details.tasks.total > 0) {
     parts.push(`tasks ${details.tasks.completed}/${details.tasks.total}`);
   }
@@ -53,12 +60,17 @@ function renderAgents(
     status.className = `status status-${agent.status}`;
     status.textContent = agent.status;
 
-    const detail = document.createElement("div");
-    detail.className = "detail";
-    detail.textContent = detailLine(details.get(agent.sessionId));
-
     row.append(name, status);
-    item.append(row, detail);
+    item.append(row);
+
+    const line = detailLine(details.get(agent.sessionId));
+    if (line !== "") {
+      const detail = document.createElement("div");
+      detail.className = "detail";
+      detail.textContent = line;
+      item.append(detail);
+    }
+
     list.append(item);
   }
 }
