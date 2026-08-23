@@ -1,6 +1,25 @@
 import { type AgentsState, claudeAgents } from "./model/claude-agents";
+import { type SessionDetails, sessionDetails } from "./model/session-details";
 
-function renderAgents(list: HTMLElement, state: AgentsState): void {
+function detailLine(details: SessionDetails | undefined): string {
+  if (details === undefined) {
+    return "…";
+  }
+  const parts = [
+    `${details.shells.running} shell${details.shells.running === 1 ? "" : "s"}`,
+    `${details.subagentCount} agent${details.subagentCount === 1 ? "" : "s"}`,
+  ];
+  if (details.tasks.total > 0) {
+    parts.push(`tasks ${details.tasks.completed}/${details.tasks.total}`);
+  }
+  return parts.join(" · ");
+}
+
+function renderAgents(
+  list: HTMLElement,
+  state: AgentsState,
+  details: Map<string, SessionDetails>,
+): void {
   list.replaceChildren();
 
   if (state.error !== null) {
@@ -22,6 +41,9 @@ function renderAgents(list: HTMLElement, state: AgentsState): void {
     const item = document.createElement("li");
     item.className = "agent";
 
+    const row = document.createElement("div");
+    row.className = "row";
+
     const name = document.createElement("span");
     name.className = "name";
     name.textContent = agent.name;
@@ -31,7 +53,12 @@ function renderAgents(list: HTMLElement, state: AgentsState): void {
     status.className = `status status-${agent.status}`;
     status.textContent = agent.status;
 
-    item.append(name, status);
+    const detail = document.createElement("div");
+    detail.className = "detail";
+    detail.textContent = detailLine(details.get(agent.sessionId));
+
+    row.append(name, status);
+    item.append(row, detail);
     list.append(item);
   }
 }
@@ -49,8 +76,13 @@ function render(root: HTMLElement): void {
 
   root.append(heading, list, hint);
 
-  claudeAgents.subscribe((state) => renderAgents(list, state));
+  const rerender = (): void => {
+    renderAgents(list, claudeAgents.state, sessionDetails.details);
+  };
+  claudeAgents.subscribe(rerender);
+  sessionDetails.subscribe(rerender);
   claudeAgents.start(3000);
+  sessionDetails.start(3000);
 }
 
 const app = document.getElementById("app");

@@ -1,3 +1,7 @@
+use std::io::{Read, Seek, SeekFrom};
+use std::path::{Path, PathBuf};
+
+use serde::Serialize;
 use tauri::Manager;
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
 
@@ -20,6 +24,121 @@ async fn list_claude_agents() -> Result<String, String> {
             ));
         }
         String::from_utf8(output.stdout).map_err(|e| format!("invalid utf-8: {e}"))
+    })
+    .await
+    .map_err(|e| format!("task failed: {e}"))?
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProbePaths {
+    /// ~/.claude
+    claude_home: String,
+    /// /private/tmp/claude-<uid>
+    tmp_base: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DirEntryInfo {
+    name: String,
+    size: u64,
+    modified_ms: u64,
+    is_dir: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FileSlice {
+    content: String,
+    /// File size at read time; use as the offset for the next read.
+    size: u64,
+}
+
+fn claude_roots() -> Result<(PathBuf, PathBuf), String> {
+    let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
+    let claude_home = Path::new(&home).join(".claude");
+    let uid = {
+        use std::os::unix::fs::MetadataExt;
+        std::fs::metadata(&home).map_err(|e| e.to_string())?.uid()
+    };
+    let tmp_base = PathBuf::from(format!("/private/tmp/claude-{uid}"));
+    Ok((claude_home, tmp_base))
+}
+
+/// Only files under ~/.claude or the claude temp dir may be read.
+fn ensure_allowed(path: &Path) -> Result<(), String> {
+    let canonical = path
+        .canonicalize()
+        .map_err(|e| format!("cannot resolve {}: {e}", path.display()))?;
+    let (claude_home, tmp_base) = claude_roots()?;
+    let claude_home = claude_home.canonicalize().unwrap_or(claude_home);
+    let tmp_base = tmp_base.canonicalize().unwrap_or(tmp_base);
+    if canonical.starts_with(&claude_home) || canonical.starts_with(&tmp_base) {
+        Ok(())
+    } else {
+        Err(format!("path outside allowed roots: {}", canonical.display()))
+    }
+}
+
+#[tauri::command]
+fn probe_paths() -> Result<ProbePaths, String> {
+    let (claude_home, tmp_base) = claude_roots()?;
+    Ok(ProbePaths {
+        claude_home: claude_home.to_string_lossy().into_owned(),
+        tmp_base: tmp_base.to_string_lossy().into_owned(),
+    })
+}
+
+/// Lists a directory under the allowed roots. A missing directory is not an
+/// error — it just means the session has no such state yet.
+#[tauri::command]
+fn list_session_dir(path: String) -> Result<Vec<DirEntryInfo>, String> {
+    let dir = PathBuf::from(&path);
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+    ensure_allowed(&dir)?;
+    let mut entries = Vec::new();
+    for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
+        let meta = match entry.metadata() {
+            Ok(meta) => meta,
+            Err(_) => continue,
+        };
+        let modified_ms = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        entries.push(DirEntryInfo {
+            name: entry.file_name().to_string_lossy().into_owned(),
+            size: meta.len(),
+            modified_ms,
+            is_dir: meta.is_dir(),
+        });
+    }
+    Ok(entries)
+}
+
+/// Reads a file from `offset` to EOF. Returns the new size so the caller can
+/// resume from there next time; a size smaller than the caller's stored
+/// offset means the file was truncated and should be re-read from zero.
+#[tauri::command]
+async fn read_file_slice(path: String, offset: u64) -> Result<FileSlice, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let file_path = PathBuf::from(&path);
+        ensure_allowed(&file_path)?;
+        let mut file = std::fs::File::open(&file_path).map_err(|e| e.to_string())?;
+        let len = file.metadata().map_err(|e| e.to_string())?.len();
+        let start = offset.min(len);
+        file.seek(SeekFrom::Start(start)).map_err(|e| e.to_string())?;
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).map_err(|e| e.to_string())?;
+        Ok(FileSlice {
+            content: String::from_utf8_lossy(&buf).into_owned(),
+            size: start + buf.len() as u64,
+        })
     })
     .await
     .map_err(|e| format!("task failed: {e}"))?
@@ -53,7 +172,12 @@ pub fn run() {
                 })
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![list_claude_agents])
+        .invoke_handler(tauri::generate_handler![
+            list_claude_agents,
+            probe_paths,
+            list_session_dir,
+            read_file_slice
+        ])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(

@@ -29,12 +29,21 @@ h1 {
 }
 
 .agent {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #2a2a30;
+}
+
+.row {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 0.75rem;
-  padding: 0.4rem 0;
-  border-bottom: 1px solid #2a2a30;
+}
+
+.detail {
+  margin-top: 0.15rem;
+  font-size: 0.7rem;
+  color: #6a6a72;
 }
 
 .name {
