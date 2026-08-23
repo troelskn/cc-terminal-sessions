@@ -14,7 +14,7 @@
       {
         "title": "Dask",
         "width": 280,
-        "height": 600,
+        "height": 200,
         "resizable": true,
         "fullscreen": false,
         "theme": "Dark"

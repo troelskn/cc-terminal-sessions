@@ -1,5 +1,26 @@
+import { LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
 import { type AgentsState, claudeAgents } from "./model/claude-agents";
 import { type SessionDetails, sessionDetails } from "./model/session-details";
+
+const MAX_WINDOW_HEIGHT = 600;
+let lastFittedHeight = 0;
+
+/** Resizes the window height to fit the rendered content. */
+function fitWindowToContent(root: HTMLElement): void {
+  requestAnimationFrame(() => {
+    const height = Math.min(
+      MAX_WINDOW_HEIGHT,
+      Math.ceil(root.getBoundingClientRect().height),
+    );
+    if (height === lastFittedHeight) {
+      return;
+    }
+    lastFittedHeight = height;
+    getCurrentWindow()
+      .setSize(new LogicalSize(window.innerWidth, height))
+      .catch((error: unknown) => console.error("resize failed:", error));
+  });
+}
 
 function detailLine(details: SessionDetails | undefined): string {
   if (details === undefined) {
@@ -94,6 +115,7 @@ function render(root: HTMLElement): void {
 
   const rerender = (): void => {
     renderAgents(list, claudeAgents.state, sessionDetails.details);
+    fitWindowToContent(root);
   };
   claudeAgents.subscribe(rerender);
   sessionDetails.subscribe(rerender);
