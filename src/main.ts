@@ -10,12 +10,13 @@ let chromeExtra: number | null = null;
 async function resizeTo(contentHeight: number): Promise<void> {
   const win = getCurrentWindow();
   if (chromeExtra === null) {
-    // Calibrate: set the size, then see how much of it the webview
-    // actually received; the difference is window chrome.
+    // Calibrate: set the size, wait for the resize to land, then compare
+    // against the height the webview actually received. The difference is
+    // the title bar. (Tauri's innerSize() cannot be used here — it reports
+    // the requested size back, title bar included.)
     await win.setSize(new LogicalSize(window.innerWidth, contentHeight));
-    const scale = await win.scaleFactor();
-    const inner = await win.innerSize();
-    chromeExtra = Math.max(0, contentHeight - Math.round(inner.height / scale));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    chromeExtra = Math.max(0, contentHeight - window.innerHeight);
     if (chromeExtra === 0) {
       return;
     }
