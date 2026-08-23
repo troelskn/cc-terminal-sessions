@@ -146,6 +146,13 @@ function render(root: HTMLElement): void {
     badge.classList.remove("pulse");
     void badge.offsetWidth; // reflow so a rapid re-press restarts the animation
     badge.classList.add("pulse");
+
+    const agent = claudeAgents.state.agents[Number(event.key) - 1];
+    if (agent !== undefined) {
+      claudeAgents
+        .focusTerminal(agent)
+        .catch((error: unknown) => console.error("focus failed:", error));
+    }
   });
 
   const rerender = (): void => {

@@ -18,6 +18,10 @@ export interface ClaudeAgent {
   sessionId: string;
   name: string;
   status: AgentStatus;
+  /** Pid of the terminal-attached process for this session: its own pid
+   * for interactive sessions, the hidden twin's pid for a deduped
+   * background continuation, null when daemon-only. */
+  terminalPid: number | null;
 }
 
 export interface AgentsState {
@@ -45,7 +49,16 @@ function parseAgent(value: unknown): ClaudeAgent {
   ) {
     throw new Error(`malformed agent entry: ${JSON.stringify(value)}`);
   }
-  return { pid, cwd, kind, startedAt, sessionId, name, status };
+  return {
+    pid,
+    cwd,
+    kind,
+    startedAt,
+    sessionId,
+    name,
+    status,
+    terminalPid: kind === "interactive" ? pid : null,
+  };
 }
 
 /**
@@ -106,20 +119,34 @@ class ClaudeAgentsModel {
    * paths), so hide any *listed* session whose id appears there.
    */
   async #dedupe(agents: ClaudeAgent[]): Promise<ClaudeAgent[]> {
-    const listed = new Set(agents.map((agent) => agent.sessionId));
+    const byId = new Map(agents.map((agent) => [agent.sessionId, agent]));
     const hidden = new Set<string>();
     await Promise.all(
       agents
         .filter((agent) => agent.kind === "background")
         .map(async (agent) => {
           for (const id of await this.#linkedSessions(agent)) {
-            if (listed.has(id)) {
-              hidden.add(id);
+            const twin = byId.get(id);
+            if (twin === undefined) {
+              continue;
+            }
+            hidden.add(id);
+            // The twin's terminal is where this session is being viewed.
+            if (agent.terminalPid === null && twin.kind === "interactive") {
+              agent.terminalPid = twin.pid;
             }
           }
         }),
     );
     return agents.filter((agent) => !hidden.has(agent.sessionId));
+  }
+
+  /** Brings the Terminal tab hosting this session to the front. */
+  async focusTerminal(agent: ClaudeAgent): Promise<void> {
+    if (agent.terminalPid === null) {
+      return;
+    }
+    await invoke("focus_terminal_tab", { pid: agent.terminalPid });
   }
 
   async #linkedSessions(agent: ClaudeAgent): Promise<Set<string>> {

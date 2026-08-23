@@ -158,6 +158,48 @@ async fn read_file_slice(
     .map_err(|e| format!("task failed: {e}"))?
 }
 
+/// Brings the Terminal.app tab hosting `pid`'s controlling tty to the front.
+#[tauri::command]
+async fn focus_terminal_tab(pid: u32) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let output = std::process::Command::new("ps")
+            .args(["-o", "tty=", "-p", &pid.to_string()])
+            .output()
+            .map_err(|e| e.to_string())?;
+        let tty = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if tty.is_empty() || tty == "??" {
+            return Err(format!("pid {pid} has no controlling tty"));
+        }
+        let script = format!(
+            r#"tell application "Terminal"
+    repeat with w in windows
+        repeat with t in tabs of w
+            if tty of t is "/dev/{tty}" then
+                set selected of t to true
+                set index of w to 1
+                activate
+                return
+            end if
+        end repeat
+    end repeat
+end tell"#
+        );
+        let output = std::process::Command::new("osascript")
+            .args(["-e", &script])
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !output.status.success() {
+            return Err(format!(
+                "osascript failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("task failed: {e}"))?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Cmd+Shift+D on macOS (SUPER maps to the command key)
@@ -190,7 +232,8 @@ pub fn run() {
             list_claude_agents,
             probe_paths,
             list_session_dir,
-            read_file_slice
+            read_file_slice,
+            focus_terminal_tab
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
