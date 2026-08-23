@@ -37,7 +37,16 @@ h1 {
   border-bottom: 1px solid #2a2a30;
 }
 
+.index {
+  flex-shrink: 0;
+  min-width: 1.1rem;
+  text-align: right;
+  font-size: 0.7rem;
+  color: #6a6a72;
+}
+
 .info {
+  flex: 1;
   min-width: 0;
 }
 

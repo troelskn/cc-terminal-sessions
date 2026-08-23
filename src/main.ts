@@ -44,9 +44,14 @@ function renderAgents(
     return;
   }
 
-  for (const agent of state.agents) {
+  for (const [i, agent] of state.agents.entries()) {
     const item = document.createElement("li");
     item.className = "agent";
+
+    const index = document.createElement("span");
+    index.className = "index";
+    index.textContent = String(i + 1);
+    item.append(index);
 
     const info = document.createElement("div");
     info.className = "info";
