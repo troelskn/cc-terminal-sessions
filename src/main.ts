@@ -4,6 +4,26 @@ import { type SessionDetails, sessionDetails } from "./model/session-details";
 
 const MAX_WINDOW_HEIGHT = 600;
 let lastFittedHeight = 0;
+/** Height the OS adds around the webview (title bar); measured once. */
+let chromeExtra: number | null = null;
+
+async function resizeTo(contentHeight: number): Promise<void> {
+  const win = getCurrentWindow();
+  if (chromeExtra === null) {
+    // Calibrate: set the size, then see how much of it the webview
+    // actually received; the difference is window chrome.
+    await win.setSize(new LogicalSize(window.innerWidth, contentHeight));
+    const scale = await win.scaleFactor();
+    const inner = await win.innerSize();
+    chromeExtra = Math.max(0, contentHeight - Math.round(inner.height / scale));
+    if (chromeExtra === 0) {
+      return;
+    }
+  }
+  await win.setSize(
+    new LogicalSize(window.innerWidth, contentHeight + chromeExtra),
+  );
+}
 
 /** Resizes the window height to fit the rendered content. */
 function fitWindowToContent(root: HTMLElement): void {
@@ -16,9 +36,9 @@ function fitWindowToContent(root: HTMLElement): void {
       return;
     }
     lastFittedHeight = height;
-    getCurrentWindow()
-      .setSize(new LogicalSize(window.innerWidth, height))
-      .catch((error: unknown) => console.error("resize failed:", error));
+    resizeTo(height).catch((error: unknown) =>
+      console.error("resize failed:", error),
+    );
   });
 }
 
