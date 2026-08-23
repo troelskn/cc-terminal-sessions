@@ -1,6 +1,6 @@
 [package]
 name = "cc-terminal-sessions"
-version = "0.1.0"
+version = "0.1.1"
 description = "Menu-style dashboard of Claude Code terminal sessions"
 authors = ["troelskn"]
 license = ""
