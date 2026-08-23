@@ -218,7 +218,9 @@ pub fn run() {
                         let focused = window.is_focused().unwrap_or(false);
                         let visible = window.is_visible().unwrap_or(false);
                         if focused && visible {
-                            let _ = window.hide();
+                            // Hide the whole app, not just the window: macOS
+                            // then restores focus to the previously active app.
+                            let _ = app.hide();
                         } else {
                             let _ = window.show();
                             let _ = window.unminimize();
