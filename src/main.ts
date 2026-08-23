@@ -1,3 +1,4 @@
+import { hide as hideApp } from "@tauri-apps/api/app";
 import { LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
 import { type AgentsState, claudeAgents } from "./model/claude-agents";
 import { type SessionDetails, sessionDetails } from "./model/session-details";
@@ -180,6 +181,8 @@ function render(root: HTMLElement): void {
     badge.classList.add("pulse");
     claudeAgents
       .focusTerminal(agent)
+      // Terminal is frontmost now, so hiding the app leaves focus there.
+      .then(() => hideApp())
       .catch((error: unknown) => console.error("focus failed:", error));
   });
 

@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "core:window:allow-set-size",
-    "core:window:allow-start-dragging"
+    "core:window:allow-start-dragging",
+    "core:app:allow-app-hide"
   ]
 }
