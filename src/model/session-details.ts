@@ -31,6 +31,8 @@ export interface TaskCounts {
 export interface SessionDetails {
   sessionId: string;
   shells: ShellCounts;
+  /** Sub-agents whose transcript was written to recently. There is no
+   * liveness field on disk, so recency is the best available signal. */
   subagentCount: number;
   tasks: TaskCounts;
 }
@@ -38,6 +40,8 @@ export interface SessionDetails {
 export type DetailsListener = (details: Map<string, SessionDetails>) => void;
 
 const EXIT_MARKER = /\[exited with code -?\d+\]/;
+/** A sub-agent transcript untouched for this long counts as finished. */
+const SUBAGENT_ACTIVE_WINDOW_MS = 30_000;
 /** Longest prefix of the exit marker that could straddle a read boundary. */
 const CARRY_LENGTH = 40;
 
@@ -125,7 +129,7 @@ class SessionDetailsModel {
   async #probeSession(agent: ClaudeAgent): Promise<SessionDetails> {
     const paths = this.#paths as ProbePaths;
     const slug = slugify(agent.cwd);
-    const [subagentIds, tasks] = await Promise.all([
+    const [subagents, tasks] = await Promise.all([
       this.#listSubagents(
         `${paths.claudeHome}/projects/${slug}/${agent.sessionId}/subagents`,
       ),
@@ -133,26 +137,39 @@ class SessionDetailsModel {
     ]);
     const shells = await this.#probeShells(
       `${paths.tmpBase}/${slug}/${agent.sessionId}/tasks`,
-      subagentIds,
+      subagents.ids,
     );
     return {
       sessionId: agent.sessionId,
       shells,
-      subagentCount: subagentIds.size,
+      subagentCount: subagents.active,
       tasks,
     };
   }
 
-  async #listSubagents(dir: string): Promise<Set<string>> {
+  /**
+   * Returns all sub-agent ids ever spawned (needed to exclude their output
+   * files from shell counting) plus the number considered active, judged by
+   * transcript mtime recency — finished agents simply stop appending.
+   */
+  async #listSubagents(
+    dir: string,
+  ): Promise<{ ids: Set<string>; active: number }> {
     const entries = await invoke<DirEntry[]>("list_session_dir", { path: dir });
     const ids = new Set<string>();
+    let active = 0;
+    const now = Date.now();
     for (const entry of entries) {
       const match = /^agent-(.+)\.jsonl$/.exec(entry.name);
-      if (match?.[1] !== undefined) {
-        ids.add(match[1]);
+      if (match?.[1] === undefined) {
+        continue;
+      }
+      ids.add(match[1]);
+      if (now - entry.modifiedMs < SUBAGENT_ACTIVE_WINDOW_MS) {
+        active += 1;
       }
     }
-    return ids;
+    return { ids, active };
   }
 
   /**
