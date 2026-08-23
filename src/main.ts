@@ -86,13 +86,20 @@ function renderAgents(
     return;
   }
 
-  for (const [i, agent] of state.agents.entries()) {
+  let focusIndex = 0;
+  for (const agent of state.agents) {
     const item = document.createElement("li");
     item.className = "agent";
 
     const index = document.createElement("span");
     index.className = "index";
-    index.textContent = String(i + 1);
+    if (agent.terminalPid === null) {
+      index.textContent = "–";
+    } else {
+      focusIndex += 1;
+      index.textContent = String(focusIndex);
+      index.dataset.index = String(focusIndex);
+    }
     item.append(index);
 
     const info = document.createElement("div");
@@ -138,21 +145,22 @@ function render(root: HTMLElement): void {
     if (!/^[1-9]$/.test(event.key)) {
       return;
     }
-    const badges = root.querySelectorAll<HTMLElement>(".agents .index");
-    const badge = badges[Number(event.key) - 1];
-    if (badge === undefined) {
+    const badge = root.querySelector<HTMLElement>(
+      `.agents .index[data-index="${event.key}"]`,
+    );
+    const focusable = claudeAgents.state.agents.filter(
+      (agent) => agent.terminalPid !== null,
+    );
+    const agent = focusable[Number(event.key) - 1];
+    if (badge === null || agent === undefined) {
       return;
     }
     badge.classList.remove("pulse");
     void badge.offsetWidth; // reflow so a rapid re-press restarts the animation
     badge.classList.add("pulse");
-
-    const agent = claudeAgents.state.agents[Number(event.key) - 1];
-    if (agent !== undefined) {
-      claudeAgents
-        .focusTerminal(agent)
-        .catch((error: unknown) => console.error("focus failed:", error));
-    }
+    claudeAgents
+      .focusTerminal(agent)
+      .catch((error: unknown) => console.error("focus failed:", error));
   });
 
   const rerender = (): void => {
