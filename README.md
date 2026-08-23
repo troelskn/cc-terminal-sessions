@@ -50,7 +50,9 @@ list when it does.
 npm install
 npm run tauri dev      # run the app with hot reload
 npm run typecheck      # tsc
-npm run tauri build    # produce a bundled .app
+npm run bundle         # produce a bundled .app for this machine's real
+                       # architecture (arm64 on Apple Silicon, x86_64 on
+                       # Intel; needs rustup's toolchain on Apple Silicon)
 ```
 
 The app icon is generated from `src-tauri/icons/source.svg` via
