@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "dask",
+  "productName": "cc-terminal-sessions",
   "version": "0.1.0",
-  "identifier": "dk.knak-nielsen.dask",
+  "identifier": "dk.knak-nielsen.cc-terminal-sessions",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -13,7 +13,7 @@
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "Dask",
+        "title": "cc-terminal-sessions",
         "width": 350,
         "height": 200,
         "resizable": true,
