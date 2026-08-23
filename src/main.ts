@@ -1,32 +1,56 @@
-import { claudeAgents } from "./model/claude-agents";
+import { type AgentsState, claudeAgents } from "./model/claude-agents";
 
-// Temporary smoke test of the model layer; replace with real UI.
-async function renderProbe(root: HTMLElement): Promise<void> {
-  const line = document.createElement("p");
-  line.textContent = "probing sessions…";
-  root.append(line);
-  try {
-    const agents = await claudeAgents.probe();
-    const summary = agents
-      .map((a) => `${a.name} (${a.status})`)
-      .join(", ");
-    line.textContent = `${agents.length} session(s): ${summary}`;
-  } catch (error) {
-    line.textContent = `probe failed: ${String(error)}`;
+function renderAgents(list: HTMLElement, state: AgentsState): void {
+  list.replaceChildren();
+
+  if (state.error !== null) {
+    const error = document.createElement("li");
+    error.className = "error";
+    error.textContent = state.error;
+    list.append(error);
+  }
+
+  if (state.agents.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "empty";
+    empty.textContent = "no active sessions";
+    list.append(empty);
+    return;
+  }
+
+  for (const agent of state.agents) {
+    const item = document.createElement("li");
+    item.className = "agent";
+
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = agent.name;
+    name.title = agent.cwd;
+
+    const status = document.createElement("span");
+    status.className = `status status-${agent.status}`;
+    status.textContent = agent.status;
+
+    item.append(name, status);
+    list.append(item);
   }
 }
 
 function render(root: HTMLElement): void {
   const heading = document.createElement("h1");
-  heading.textContent = "Hello from Dask";
+  heading.textContent = "Dask";
 
-  const paragraph = document.createElement("p");
-  paragraph.textContent =
-    "This is a Tauri window rendering a Vite + TypeScript frontend. " +
-    "Press ⌘⇧D anywhere to toggle this window.";
+  const list = document.createElement("ul");
+  list.className = "agents";
 
-  root.append(heading, paragraph);
-  void renderProbe(root);
+  const hint = document.createElement("p");
+  hint.className = "hint";
+  hint.textContent = "⌘⇧D toggles this window";
+
+  root.append(heading, list, hint);
+
+  claudeAgents.subscribe((state) => renderAgents(list, state));
+  claudeAgents.start(3000);
 }
 
 const app = document.getElementById("app");
