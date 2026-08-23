@@ -44,15 +44,22 @@ list when it does.
 - The `claude` CLI on your login shell's PATH
 - Rust ≥ 1.77 and Node for development
 
+## Building
+
+`npm install && npm run bundle` produces a release build. The script detects
+the machine's real architecture (via `sysctl`, so it isn't fooled by a
+Rosetta shell) and runs `tauri build` for it; the finished app lands in
+`src-tauri/target/<arch>-apple-darwin/release/bundle/macos/cc-terminal-sessions.app`
+(a `.dmg` is written next to it). Drag the `.app` to `/Applications` — the
+build is unsigned, so on first launch you may need to right-click → Open.
+
 ## Development
 
 ```bash
 npm install
 npm run tauri dev      # run the app with hot reload
 npm run typecheck      # tsc
-npm run bundle         # produce a bundled .app for this machine's real
-                       # architecture (arm64 on Apple Silicon, x86_64 on
-                       # Intel; needs rustup's toolchain on Apple Silicon)
+npm run bundle         # release build, see Building above
 ```
 
 The app icon is generated from `src-tauri/icons/source.svg` via
