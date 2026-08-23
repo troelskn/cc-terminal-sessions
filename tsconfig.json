@@ -1,12 +1,10 @@
 {
   "compilerOptions": {
     "target": "es2023",
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
-    "lib": ["es2023"],
-    "types": ["node"],
-    "outDir": "dist",
-    "rootDir": "src",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "noEmit": true,
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
@@ -15,8 +13,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "sourceMap": true,
-    "declaration": true
+    "useDefineForClassFields": true
   },
   "include": ["src"]
 }

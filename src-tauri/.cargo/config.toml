@@ -1,0 +1,6 @@
+# Workaround for a broken Xcode.app toolchain on this machine: xcodebuild fails
+# to load (stale CoreDevice framework vs the installed OS), which breaks the
+# /usr/bin/cc shim. Route the toolchain through the standalone Command Line
+# Tools instead. Remove once Xcode's components are repaired/updated.
+[env]
+DEVELOPER_DIR = "/Library/Developer/CommandLineTools"
