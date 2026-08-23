@@ -105,6 +105,10 @@ main {
   color: #5fb85f;
 }
 
+.status-waiting {
+  color: #d97757;
+}
+
 .empty,
 .error {
   padding: 0.4rem 0;
