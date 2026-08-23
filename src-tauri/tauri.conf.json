@@ -13,10 +13,11 @@
     "windows": [
       {
         "title": "Dask",
-        "width": 800,
+        "width": 280,
         "height": 600,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "theme": "Dark"
       }
     ],
     "security": {
