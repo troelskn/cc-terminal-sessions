@@ -134,7 +134,7 @@ function render(root: HTMLElement): void {
 
   const hint = document.createElement("p");
   hint.className = "hint";
-  hint.textContent = "⌘⇧D toggle window\n1..N select session";
+  hint.textContent = "1..N select session · ⌘⇧D toggle window";
 
   root.append(list, hint);
 
