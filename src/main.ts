@@ -48,29 +48,28 @@ function renderAgents(
     const item = document.createElement("li");
     item.className = "agent";
 
-    const row = document.createElement("div");
-    row.className = "row";
+    const info = document.createElement("div");
+    info.className = "info";
 
-    const name = document.createElement("span");
+    const name = document.createElement("div");
     name.className = "name";
     name.textContent = agent.name;
     name.title = agent.cwd;
-
-    const status = document.createElement("span");
-    status.className = `status status-${agent.status}`;
-    status.textContent = agent.status;
-
-    row.append(name, status);
-    item.append(row);
+    info.append(name);
 
     const line = detailLine(details.get(agent.sessionId));
     if (line !== "") {
       const detail = document.createElement("div");
       detail.className = "detail";
       detail.textContent = line;
-      item.append(detail);
+      info.append(detail);
     }
 
+    const status = document.createElement("span");
+    status.className = `status status-${agent.status}`;
+    status.textContent = agent.status;
+
+    item.append(info, status);
     list.append(item);
   }
 }
