@@ -131,6 +131,23 @@ function render(root: HTMLElement): void {
 
   root.append(list, hint);
 
+  window.addEventListener("keydown", (event) => {
+    if (event.metaKey || event.ctrlKey || event.altKey) {
+      return;
+    }
+    if (!/^[1-9]$/.test(event.key)) {
+      return;
+    }
+    const badges = root.querySelectorAll<HTMLElement>(".agents .index");
+    const badge = badges[Number(event.key) - 1];
+    if (badge === undefined) {
+      return;
+    }
+    badge.classList.remove("pulse");
+    void badge.offsetWidth; // reflow so a rapid re-press restarts the animation
+    badge.classList.add("pulse");
+  });
+
   const rerender = (): void => {
     renderAgents(list, claudeAgents.state, sessionDetails.details);
     fitWindowToContent(root);

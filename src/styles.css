@@ -43,6 +43,17 @@ main {
   color: #6a6a72;
 }
 
+.index.pulse {
+  animation: index-pulse 1s ease-out;
+}
+
+@keyframes index-pulse {
+  from {
+    color: #fff;
+    border-color: #fff;
+  }
+}
+
 .info {
   flex: 1;
   min-width: 0;
