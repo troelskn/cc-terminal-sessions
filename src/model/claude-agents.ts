@@ -26,6 +26,8 @@ export interface ClaudeAgent {
   terminalPid: number | null;
   /** How the session bills: API key in its env, or the claude.ai login. */
   auth: AuthMode;
+  /** Background-job id (the CLI's `id` field), null for interactive. */
+  jobId: string | null;
 }
 
 export interface AgentsState {
@@ -63,6 +65,7 @@ function parseAgent(value: unknown): ClaudeAgent {
     status,
     terminalPid: kind === "interactive" ? pid : null,
     auth: "unknown",
+    jobId: typeof record.id === "string" ? record.id : null,
   };
 }
 

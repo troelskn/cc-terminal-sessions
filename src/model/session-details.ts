@@ -120,6 +120,7 @@ class SessionDetailsModel {
     const shells = await this.#probeShells(
       `${paths.tmpBase}/${slug}/${agent.sessionId}/tasks`,
       subagents.ids,
+      agent,
     );
     return {
       sessionId: agent.sessionId,
@@ -155,15 +156,72 @@ class SessionDetailsModel {
   }
 
   /**
+   * The live task list a background job's state.json maintains — the
+   * authoritative "running" set. Null when unavailable (interactive
+   * sessions, unreadable file), in which case the caller falls back to
+   * the exit-marker heuristic.
+   */
+  async #runningShellIds(agent: ClaudeAgent): Promise<Set<string> | null> {
+    if (agent.jobId === null) {
+      return null;
+    }
+    try {
+      const paths = await probePaths();
+      const slice = await readFileSlice(
+        `${paths.claudeHome}/jobs/${agent.jobId}/state.json`,
+        0,
+      );
+      const parsed: unknown = JSON.parse(slice.content);
+      const fan = (parsed as Record<string, unknown>).fan;
+      if (!Array.isArray(fan)) {
+        return new Set();
+      }
+      const ids = new Set<string>();
+      for (const entry of fan) {
+        const record = entry as Record<string, unknown>;
+        if (record.kind === "shell" && typeof record.id === "string") {
+          ids.add(record.id);
+        }
+      }
+      return ids;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Counts background shells by their .output files. Files belonging to
-   * sub-agents (same id) are excluded; a shell is "completed" once its
-   * output contains the exit marker.
+   * sub-agents (same id) are excluded. Running is judged by the job's live
+   * task list when available; otherwise a shell counts as completed once
+   * its output contains the exit marker (which a killed shell never gets —
+   * the fallback can overcount running).
    */
   async #probeShells(
     dir: string,
     subagentIds: Set<string>,
+    agent: ClaudeAgent,
   ): Promise<ShellCounts> {
+    const fanIds = await this.#runningShellIds(agent);
     const entries = await listSessionDir(dir);
+    if (fanIds !== null) {
+      let running = 0;
+      let completed = 0;
+      for (const entry of entries) {
+        const match = /^(.+)\.output$/.exec(entry.name);
+        if (entry.isDir || match?.[1] === undefined) {
+          continue;
+        }
+        if (subagentIds.has(match[1])) {
+          continue;
+        }
+        if (fanIds.has(match[1])) {
+          running += 1;
+        } else {
+          completed += 1;
+        }
+      }
+      return { running, completed };
+    }
     let running = 0;
     let completed = 0;
     for (const entry of entries) {
