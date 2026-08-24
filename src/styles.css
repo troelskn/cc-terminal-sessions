@@ -89,7 +89,11 @@ main {
 }
 
 .auth-api {
-  color: #6a6a72;
+  color: #12a594;
+}
+
+.auth-unknown {
+  color: #8a5a3c;
 }
 
 .status {

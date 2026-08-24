@@ -156,9 +156,14 @@ function renderAgents(
     label.textContent = agent.name;
 
     const auth = document.createElement("span");
-    auth.className = agent.auth === "api" ? "auth auth-api" : "auth";
+    auth.className = `auth auth-${agent.auth}`;
     auth.textContent = "✱";
-    auth.title = agent.auth === "api" ? "API key" : "subscription";
+    auth.title =
+      agent.auth === "api"
+        ? "API key"
+        : agent.auth === "subscription"
+          ? "subscription"
+          : "unknown";
 
     name.append(label, auth);
     info.append(name);
