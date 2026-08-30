@@ -4,6 +4,8 @@ A tiny macOS heads-up display for your [Claude Code](https://code.claude.com)
 terminal sessions. Summon it with a global hotkey, see every running session
 at a glance, and jump straight to the Terminal tab a session lives in.
 
+![Screenshot of the cc-terminal-sessions panel](screenshot.png)
+
 ## Architecture
 
 Built with Tauri v2 — a frameless, dark, auto-sizing panel with a TypeScript
