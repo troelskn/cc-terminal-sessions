@@ -66,3 +66,35 @@ npm run bundle         # release build, see Building above
 
 The app icon is generated from `src-tauri/icons/source.svg` via
 `npx tauri icon <1024px png>`.
+
+## Releasing
+
+There is no CI; releases are cut from a local Apple Silicon machine (both
+`aarch64` and `x86_64` rust targets must be installed via `rustup`).
+
+1. Make sure `main` is up to date: `git pull --rebase origin main`.
+2. Bump the version in `package.json`, `src-tauri/Cargo.toml` and
+   `src-tauri/tauri.conf.json`, then refresh `Cargo.lock`:
+   `(cd src-tauri && cargo update --workspace --offline)`.
+3. Commit and tag: `git commit -am "Bump version to X.Y.Z" && git tag vX.Y.Z`.
+4. Push: `git push origin main vX.Y.Z`.
+5. Build both architectures:
+
+   ```bash
+   npm run bundle                              # aarch64 (host)
+   npx tauri build --target x86_64-apple-darwin
+   ```
+
+   DMGs land in `src-tauri/target/<target>/release/bundle/dmg/`.
+6. Create the GitHub release with both DMGs attached:
+
+   ```bash
+   gh release create vX.Y.Z --title vX.Y.Z --notes-file notes.md \
+     src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/cc-terminal-sessions_X.Y.Z_aarch64.dmg \
+     src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/cc-terminal-sessions_X.Y.Z_x64.dmg
+   ```
+
+   Release notes follow the format of previous releases (`gh release view`):
+   a `## Changes` list, a `## Downloads` list naming which DMG is for Apple
+   Silicon vs. Intel, and a reminder that builds are unsigned (right-click →
+   Open on first launch).
