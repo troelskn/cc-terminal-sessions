@@ -6,6 +6,26 @@ at a glance, and jump straight to the Terminal tab a session lives in.
 
 ![Screenshot of the cc-terminal-sessions panel](screenshot.png)
 
+## Installing
+
+1. Download the latest `.dmg` from the
+   [Releases page](https://github.com/troelskn/cc-terminal-sessions/releases/latest):
+   `…_aarch64.dmg` for Apple Silicon (M1 and later), `…_x64.dmg` for Intel Macs.
+2. Open the DMG and drag `cc-terminal-sessions.app` to `/Applications`.
+3. The build is unsigned, so macOS will refuse to open it the first time.
+   Open it once, dismiss the warning, then go to **System Settings →
+   Privacy & Security**, scroll down to the notice about
+   `cc-terminal-sessions` and click **Open Anyway**. (On macOS 14 and
+   earlier, right-clicking the app and choosing **Open** works too.) This is
+   only needed once.
+4. Launch it. Press **⌘⇧D** to toggle the panel. The first time you click a
+   session to jump to its Terminal tab, macOS will ask for permission to
+   control Terminal — allow it.
+
+To have it start automatically when you log in, add it under **System
+Settings → General → Login Items & Extensions → Open at Login** (click **+**
+and pick the app from `/Applications`).
+
 ## Architecture
 
 Built with Tauri v2 — a frameless, dark, auto-sizing panel with a TypeScript
