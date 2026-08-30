@@ -35,9 +35,10 @@ async fn list_claude_agents() -> Result<String, String> {
     .map_err(|e| format!("task failed: {e}"))?
 }
 
-/// Best-effort auth-mode detection for a session process: an
-/// ANTHROPIC_API_KEY in its environment means API-key billing; otherwise a
-/// claude.ai login in ~/.claude.json means subscription.
+/// Best-effort auth-mode detection for a session process. In priority order:
+/// an ANTHROPIC_API_KEY in its environment means API-key billing; a claude.ai
+/// login (`oauthAccount`) in ~/.claude.json means subscription; an approved
+/// custom API key (`customApiKeyResponses.approved`) means API-key billing.
 #[tauri::command]
 async fn probe_auth(pid: u32) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -50,8 +51,17 @@ async fn probe_auth(pid: u32) -> Result<String, String> {
         }
         let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
         let config = std::fs::read_to_string(format!("{home}/.claude.json")).unwrap_or_default();
-        if config.contains("\"oauthAccount\"") {
-            Ok("subscription".to_string())
+        let json: serde_json::Value = serde_json::from_str(&config).unwrap_or(serde_json::Value::Null);
+        if json.get("oauthAccount").is_some() {
+            return Ok("subscription".to_string());
+        }
+        let approved_key = json
+            .get("customApiKeyResponses")
+            .and_then(|r| r.get("approved"))
+            .and_then(|a| a.as_array())
+            .is_some_and(|a| !a.is_empty());
+        if approved_key {
+            Ok("api".to_string())
         } else {
             Ok("unknown".to_string())
         }
