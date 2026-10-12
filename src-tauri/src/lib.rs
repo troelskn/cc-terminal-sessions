@@ -14,12 +14,19 @@ use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
 /// many setups (including PATH additions for ~/.local/bin) actually live.
 /// Without `-i`, a Finder-launched .app resolves `claude` as not-found even
 /// though it works from the terminal.
+///
+/// The binary name can be overridden with `CC_TERMINAL_SESSIONS_CLAUDE_BIN`.
+/// It is expanded by that same shell rather than read here, so a value
+/// exported from ~/.zshrc applies even when the app is launched from Finder.
 #[tauri::command]
 async fn list_claude_agents() -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
         let output = std::process::Command::new(shell)
-            .args(["-ilc", "claude agents --json"])
+            .args([
+                "-ilc",
+                r#""${CC_TERMINAL_SESSIONS_CLAUDE_BIN:-claude}" agents --json"#,
+            ])
             .output()
             .map_err(|e| format!("failed to run claude: {e}"))?;
         if !output.status.success() {

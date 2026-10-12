@@ -63,7 +63,10 @@ list when it does.
 
 - macOS (Terminal.app for the focus-a-session feature; first use prompts
   for Automation permission)
-- The `claude` CLI on your login shell's PATH
+- The `claude` CLI on your login shell's PATH. If it's installed under
+  another name, export `CC_TERMINAL_SESSIONS_CLAUDE_BIN` from your
+  shell's startup file (e.g. `~/.zshrc` or `~/.bash_profile`) with the
+  binary name or path
 - Rust ≥ 1.77 and Node for development
 
 ## Building
