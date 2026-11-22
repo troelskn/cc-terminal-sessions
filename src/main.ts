@@ -73,7 +73,10 @@ function metaLine(
   agent: ClaudeAgent,
   details: SessionDetails | undefined,
 ): string {
-  const parts = [formatAge(Date.now() - agent.startedAt)];
+  const parts: string[] = [];
+  if (agent.startedAt !== null) {
+    parts.push(formatAge(Date.now() - agent.startedAt));
+  }
   const tokens = details?.contextTokens;
   if (tokens !== undefined && tokens !== null) {
     parts.push(`${formatTokens(tokens)} ctx`);

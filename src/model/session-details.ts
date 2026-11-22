@@ -24,9 +24,11 @@ export interface SessionDetails {
    * liveness field on disk, so recency is the best available signal. */
   subagentCount: number;
   tasks: TaskCounts;
-  /** Tokens in context per the transcript's last assistant usage block. */
+  /** Tokens in context per the transcript's last assistant usage block;
+   * null when no recognisable usage block was found. */
   contextTokens: number | null;
-  /** Estimated API-rate cost accumulated from transcript usage blocks. */
+  /** Estimated API-rate cost accumulated from transcript usage blocks;
+   * null when no recognisable usage block has been priced. */
   costUsd: number | null;
 }
 
@@ -47,7 +49,8 @@ interface TaskFileCache {
 interface CostAccum {
   /** Byte offset of the first unconsumed line. */
   offset: number;
-  cost: number;
+  /** Null until a recognisable usage block has been priced. */
+  cost: number | null;
   /** Dedupes repeated usage lines belonging to one API response. */
   lastMessageId: string | null;
 }
@@ -75,6 +78,15 @@ function priceFor(model: string): [number, number] {
   return FALLBACK_PRICE;
 }
 
+/** True when the usage block carries the token counts we know how to read;
+ * false means the format changed and any figure derived from it is a guess. */
+function isKnownUsage(usage: Record<string, unknown>): boolean {
+  return (
+    typeof usage.input_tokens === "number" ||
+    typeof usage.output_tokens === "number"
+  );
+}
+
 function usageCost(model: string, usage: Record<string, unknown>): number {
   const [inRate, outRate] = priceFor(model);
   const count = (key: string): number =>
@@ -95,6 +107,21 @@ function usageCost(model: string, usage: Record<string, unknown>): number {
       count("output_tokens") * outRate) /
     MTOK
   );
+}
+
+/** Resolves to `fallback` when a probe fails, so one unreadable file costs
+ * one figure rather than the whole detail row. */
+async function settle<T>(
+  probe: Promise<T>,
+  fallback: T,
+  what: string,
+): Promise<T> {
+  try {
+    return await probe;
+  } catch (error) {
+    console.warn(`${what} probe failed:`, error);
+    return fallback;
+  }
 }
 
 /**
@@ -172,20 +199,38 @@ class SessionDetailsModel {
   async #probeSession(agent: ClaudeAgent): Promise<SessionDetails> {
     const paths = await probePaths();
     const slug = slugify(agent.cwd);
+    // A failed probe keeps the figure from the previous poll.
+    const previous = this.#details.get(agent.sessionId);
     const [subagents, tasks, contextTokens] = await Promise.all([
-      this.#listSubagents(
-        `${paths.claudeHome}/projects/${slug}/${agent.sessionId}/subagents`,
+      settle(
+        this.#listSubagents(
+          `${paths.claudeHome}/projects/${slug}/${agent.sessionId}/subagents`,
+        ),
+        { ids: new Set<string>(), active: previous?.subagentCount ?? 0 },
+        "subagents",
       ),
-      this.#probeTasks(`${paths.claudeHome}/tasks/${agent.sessionId}`),
-      this.#probeContext(
-        `${paths.claudeHome}/projects/${slug}`,
-        agent.sessionId,
+      settle(
+        this.#probeTasks(`${paths.claudeHome}/tasks/${agent.sessionId}`),
+        previous?.tasks ?? { total: 0, completed: 0 },
+        "tasks",
+      ),
+      settle(
+        this.#probeContext(
+          `${paths.claudeHome}/projects/${slug}`,
+          agent.sessionId,
+        ),
+        previous?.contextTokens ?? null,
+        "context",
       ),
     ]);
-    const shells = await this.#probeShells(
-      `${paths.tmpBase}/${slug}/${agent.sessionId}/tasks`,
-      subagents.ids,
-      agent,
+    const shells = await settle(
+      this.#probeShells(
+        `${paths.tmpBase}/${slug}/${agent.sessionId}/tasks`,
+        subagents.ids,
+        agent,
+      ),
+      previous?.shells ?? { running: 0, completed: 0 },
+      "shells",
     );
     const transcriptPaths = [
       `${paths.claudeHome}/projects/${slug}/${agent.sessionId}.jsonl`,
@@ -197,7 +242,9 @@ class SessionDetailsModel {
     const costs = await Promise.all(
       transcriptPaths.map((path) => this.#accumulateCost(path)),
     );
-    const costUsd = costs.reduce((sum, cost) => sum + cost, 0);
+    const priced = costs.filter((cost) => cost !== null);
+    const costUsd =
+      priced.length > 0 ? priced.reduce((sum, cost) => sum + cost, 0) : null;
     return {
       sessionId: agent.sessionId,
       shells,
@@ -213,10 +260,10 @@ class SessionDetailsModel {
    * probe reads only bytes past the stored offset and consumes whole
    * lines, so a session's history is priced exactly once.
    */
-  async #accumulateCost(path: string): Promise<number> {
-    const accum = this.#costCache.get(path) ?? {
+  async #accumulateCost(path: string): Promise<number | null> {
+    const accum: CostAccum = this.#costCache.get(path) ?? {
       offset: 0,
-      cost: 0,
+      cost: null,
       lastMessageId: null,
     };
     try {
@@ -224,7 +271,7 @@ class SessionDetailsModel {
       if (slice.size < accum.offset) {
         // Truncated; recount from scratch on the next probe.
         this.#costCache.delete(path);
-        return 0;
+        return null;
       }
       const lastNewline = slice.content.lastIndexOf("\n");
       if (slice.content.length === 0 || lastNewline === -1) {
@@ -241,7 +288,7 @@ class SessionDetailsModel {
           }
           const message = parsed.message as Record<string, unknown> | undefined;
           const usage = message?.usage as Record<string, unknown> | undefined;
-          if (usage === undefined) {
+          if (usage === undefined || !isKnownUsage(usage)) {
             continue;
           }
           const id = typeof message?.id === "string" ? message.id : null;
@@ -250,7 +297,7 @@ class SessionDetailsModel {
           }
           const model =
             typeof message?.model === "string" ? message.model : "";
-          accum.cost += usageCost(model, usage);
+          accum.cost = (accum.cost ?? 0) + usageCost(model, usage);
           accum.lastMessageId = id;
         } catch {
           // Foreign or partial line; skip.
@@ -300,7 +347,7 @@ class SessionDetailsModel {
         }
         const message = parsed.message as Record<string, unknown> | undefined;
         const usage = message?.usage as Record<string, unknown> | undefined;
-        if (usage === undefined) {
+        if (usage === undefined || !isKnownUsage(usage)) {
           continue;
         }
         const count = (key: string): number =>
