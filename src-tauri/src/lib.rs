@@ -15,6 +15,10 @@ use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
 /// Without `-i`, a Finder-launched .app resolves `claude` as not-found even
 /// though it works from the terminal.
 ///
+/// `--settings` re-enables the listing for this one invocation: users who
+/// turn the CLI's agents view off (`disableAgentView`) otherwise get an
+/// error instead of JSON. Their own settings files are left untouched.
+///
 /// The binary name can be overridden with `CC_TERMINAL_SESSIONS_CLAUDE_BIN`.
 /// It is expanded by that same shell rather than read here, so a value
 /// exported from ~/.zshrc applies even when the app is launched from Finder.
@@ -25,7 +29,7 @@ async fn list_claude_agents() -> Result<String, String> {
         let output = std::process::Command::new(shell)
             .args([
                 "-ilc",
-                r#""${CC_TERMINAL_SESSIONS_CLAUDE_BIN:-claude}" agents --json"#,
+                r#""${CC_TERMINAL_SESSIONS_CLAUDE_BIN:-claude}" --settings '{"disableAgentView":false}' agents --json"#,
             ])
             .output()
             .map_err(|e| format!("failed to run claude: {e}"))?;
