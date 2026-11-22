@@ -15,8 +15,8 @@ export interface ClaudeAgent {
   pid: number;
   cwd: string;
   kind: "interactive" | (string & {});
-  /** Epoch milliseconds. */
-  startedAt: number;
+  /** Epoch milliseconds; null when the CLI didn't report it. */
+  startedAt: number | null;
   sessionId: string;
   name: string;
   status: AgentStatus;
@@ -38,31 +38,37 @@ export interface AgentsState {
 
 export type AgentsListener = (state: AgentsState) => void;
 
-function parseAgent(value: unknown): ClaudeAgent {
+/**
+ * Parses one entry of `claude agents --json`. Only the fields the app can't
+ * work without (pid, sessionId, cwd) are required; the rest degrade to a
+ * placeholder so a renamed field costs one column, not the session. Returns
+ * null for an entry that can't be identified at all.
+ */
+function parseAgent(value: unknown): ClaudeAgent | null {
   if (typeof value !== "object" || value === null) {
-    throw new Error(`expected agent object, got ${JSON.stringify(value)}`);
+    return null;
   }
   const record = value as Record<string, unknown>;
-  const { pid, cwd, kind, startedAt, sessionId, name, status } = record;
+  const { pid, cwd, sessionId } = record;
   if (
     typeof pid !== "number" ||
     typeof cwd !== "string" ||
-    typeof kind !== "string" ||
-    typeof startedAt !== "number" ||
-    typeof sessionId !== "string" ||
-    typeof name !== "string" ||
-    typeof status !== "string"
+    typeof sessionId !== "string"
   ) {
-    throw new Error(`malformed agent entry: ${JSON.stringify(value)}`);
+    return null;
   }
+  const kind = typeof record.kind === "string" ? record.kind : "unknown";
   return {
     pid,
     cwd,
     kind,
-    startedAt,
+    startedAt: typeof record.startedAt === "number" ? record.startedAt : null,
     sessionId,
-    name,
-    status,
+    name:
+      typeof record.name === "string"
+        ? record.name
+        : (cwd.split("/").filter(Boolean).pop() ?? cwd),
+    status: typeof record.status === "string" ? record.status : "unknown",
     terminalPid: kind === "interactive" ? pid : null,
     auth: "unknown",
     jobId: typeof record.id === "string" ? record.id : null,
@@ -118,7 +124,22 @@ class ClaudeAgentsModel {
     if (!Array.isArray(data)) {
       throw new Error("expected a JSON array from claude agents --json");
     }
-    const agents = await this.#dedupe(data.map(parseAgent));
+    const parsed: ClaudeAgent[] = [];
+    for (const entry of data) {
+      const agent = parseAgent(entry);
+      if (agent === null) {
+        console.warn("skipping unrecognised agent entry:", entry);
+      } else {
+        parsed.push(agent);
+      }
+    }
+    if (data.length > 0 && parsed.length === 0) {
+      // Nothing recognisable at all: the format changed, not the sessions.
+      throw new Error(
+        `unrecognised entries from claude agents --json: ${JSON.stringify(data[0])}`,
+      );
+    }
+    const agents = await this.#dedupe(parsed);
     await this.#resolveAuth(agents);
     return agents;
   }
